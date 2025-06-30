@@ -46,3 +46,5 @@ yarn-debug.log
 # OS specific
 .DS_Store
 Thumbs.db
+
+.next
