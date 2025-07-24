@@ -834,7 +834,7 @@ The application integrates with Google's Gemini AI:
 1. Obtain a Gemini API key from https://aistudio.google.com/
 2. Add your API key to the `.env` file:
    ```
-   GEMINI_API_KEY=AIzaSyDVJ-hfTgEsIPdKGknlKEjBCi_GqkqpPoE
+   GEMINI_API_KEY=Key-YourGeminiAPIKeyHere
    ```
 3. Restart the server
 
