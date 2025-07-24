@@ -31,6 +31,25 @@ For Windows users, simply run:
 .\start_all.ps1
 ```
 
+## Updated Components
+
+### Backend Components
+- **Environment Variables**: Improved loading from `.env` file with proper error handling
+- **AI Service**: Enhanced error handling in `ai_service.py` for robust API integration
+- **Resume Parser**: Added comprehensive error handling in `resume_parser_service.py`
+- **Upload Router**: Fixed file handling and error reporting in `upload_router.py`
+- **PDF Generation**: Improved `pdf_service.py` for better PDF generation
+
+### Frontend Components
+- **Animated Background**: Enhanced with particles, grid, and glow effects
+- **Glass Card**: Modernized with glassmorphism design principles
+- **Modern UI Components**:
+  - `modern-spinner.tsx`: Animated loading indicator
+  - `modern-progress.tsx`: Stylized progress bar
+  - `modern-file-upload.tsx`: Enhanced file upload interface
+  - `floating-action-button.tsx`: Accessible action buttons
+- **Theme System**: Updated color scheme in `globals.css` for better contrast and visual appeal
+
 ## Project Overview
 
 ResumeForge allows users to:
@@ -108,8 +127,38 @@ backend/
 
 - **POST /api/upload-resume**
   - Input: .pdf or .docx file (multipart/form-data)
-  - Output: Parsed resume data (mocked for demo)
-  - Implementation: Currently returns mock data, future integration with document parsing
+  - Output: Parsed and AI-enhanced resume data
+  - Implementation: Uses `ResumeParserService` to extract text from PDF/DOCX files and parse into structured data
+  
+  ```python
+  @router.post("/upload-resume")
+  async def upload_resume(file: UploadFile = File(...)):
+      """
+      Upload and process a resume file.
+      """
+      try:
+          # Validate file type
+          file_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+          valid_extensions = [".pdf", ".docx"]
+          
+          # Process the file using ResumeParserService
+          parser = ResumeParserService()
+          parsed_resume = parser.parse_resume(tmp_path, file.filename)
+          
+          # Enhance with AI if available
+          ai_service = AIService()
+          enhanced_resume = ai_service.enhance_resume(parsed_resume)
+          
+          # Return enhanced resume data
+          return JSONResponse(content={
+              "message": f"Resume {file.filename} uploaded, enhanced, and saved successfully",
+              "resume_id": resume_id,
+              "parsed_resume": saved_resume
+          })
+      except Exception as e:
+          logger.error(f"Error processing resume: {str(e)}")
+          raise HTTPException(status_code=500, detail=f"Error processing resume: {str(e)}")
+  ```
 
 ## Data Models
 
@@ -168,32 +217,104 @@ backend/
 
 ### Current Implementation
 
-The AI enhancement service currently provides mocked responses based on the section type. These mocks simulate AI-enhanced content by adding professional terminology and achievements to the original text.
+The AI enhancement service uses Google's Gemini AI to enhance resume content. The system has robust error handling and fallback mechanisms.
 
-### Future Gemini AI Integration
+```python
+class AIService:
+    """
+    Service class to handle AI operations like text generation and enhancement.
+    Uses Google's Gemini API for text generation.
+    """
+    
+    def __init__(self):
+        """Initialize the AI service with API key."""
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            logger.warning("GEMINI_API_KEY not found in environment variables")
+            self.is_available = False
+        else:
+            try:
+                # Configure the Gemini API
+                genai.configure(api_key=self.api_key)
+                self.model = genai.GenerativeModel('gemini-1.5-pro')
+                self.is_available = True
+                logger.info("AI service initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize AI service: {str(e)}")
+                self.is_available = False
+    
+    def enhance_text(self, text: str, context: str = "") -> str:
+        """
+        Enhance text using AI to make it more professional and impactful.
+        """
+        if not self.is_available or not text:
+            logger.warning("AI service not available or empty text provided, returning original text")
+            return text
+        
+        try:
+            prompt = f"""
+            Please enhance the following text to be more professional, impactful, and suitable for a resume:
+            
+            ORIGINAL TEXT:
+            {text}
+            
+            CONTEXT (if any):
+            {context}
+            
+            Enhance the text to be:
+            - More professional and polished
+            - Action-oriented with strong verbs
+            - Quantifiable with metrics where possible
+            - Concise but comprehensive
+            - Free of grammatical errors
+            
+            Provide ONLY the enhanced text without any additional comments or explanations.
+            """
+            
+            response = self.model.generate_content(prompt)
+            enhanced_text = response.text.strip()
+            
+            # If response is empty or failed, return the original
+            if not enhanced_text:
+                logger.warning("AI returned empty response, using original text")
+                return text
+                
+            return enhanced_text
+        except Exception as e:
+            logger.error(f"Error enhancing text with AI: {str(e)}")
+            return text  # Return original text if enhancement fails
+```
 
-Plans for integrating with Google's Gemini AI include:
+### Enhancement Types
 
-1. **Setup**: 
-   - Create a Google AI Studio account and obtain an API key
-   - Add the key to environment variables or a secure configuration
+The AI service enhances different resume sections with specialized prompts:
 
-2. **Implementation**:
-   - The `integrate_gemini_ai` method in `ai_service.py` will be updated to connect to Gemini API
-   - Each resume section will have specialized prompts to guide AI enhancement
-
-3. **Configuration**:
-   To prepare for future integration, the following will be needed:
+1. **Summary**: Professional tone, achievements, core competencies
    ```python
-   # Environment variables (to be added)
-   GEMINI_API_KEY=your_api_key_here
+   personal_info["summary"] = self.enhance_text(
+       personal_info["summary"],
+       "Professional summary highlighting key strengths and career focus"
+   )
    ```
 
-4. **Enhancement Types**:
-   - **Summary**: Professional tone, achievements, core competencies
-   - **Experience**: Action verbs, quantifiable results, industry-specific terminology
-   - **Education**: Academic achievements, relevant coursework, extracurricular highlights
-   - **Skills**: Industry context, expertise level calibration, trending skill identification
+2. **Experience**: Action verbs, quantifiable results, industry-specific terminology
+   ```python
+   exp["description"] = self.enhance_text(
+       exp["description"],
+       "Work experience description highlighting achievements and responsibilities"
+   )
+   ```
+
+3. **Education**: Academic achievements, relevant coursework, extracurricular highlights
+4. **Skills**: Industry context, expertise level calibration, trending skill identification
+
+### Configuration
+
+The AI enhancement requires a Google Gemini API key in the `.env` file:
+
+```
+GEMINI_API_KEY=your_api_key_here
+```
 
 ## Setup and Installation
 
@@ -204,6 +325,35 @@ Before you begin, ensure you have the following installed:
 - **Python 3.8+**: Required for the FastAPI backend. [Download Python](https://www.python.org/downloads/)
 - **Node.js 18+ and npm**: Required for the Next.js frontend. [Download Node.js](https://nodejs.org/)
 - **Git**: For cloning the repository. [Download Git](https://git-scm.com/downloads)
+
+### Required Python Packages
+
+```
+fastapi==0.104.1
+uvicorn==0.23.2
+pydantic>=2.0.0,<3.0.0
+python-multipart==0.0.6
+python-dotenv==1.0.0
+httpx==0.25.0
+jinja2==3.1.2
+google-generativeai==0.3.1
+reportlab==4.0.4
+weasyprint==60.1
+xhtml2pdf==0.2.11
+PyPDF2==3.0.1
+pdfplumber==0.9.0
+python-docx==0.8.11
+```
+
+### Required Node.js Packages
+
+Key frontend dependencies:
+- Next.js 15.3.3
+- React 18.3.1
+- TailwindCSS
+- Radix UI components
+- Framer Motion
+- Zod for validation
 
 ### Getting Started
 
@@ -455,9 +605,41 @@ The application uses a vibrant, animated canvas background with multiple visual 
 
 ```typescript
 // Key implementation in animated-background.tsx
-const AnimatedBackground = () => {
-  // Dynamic canvas with particles, grid, and subtle glow
-};
+class Particle {
+  x: number;
+  y: number;
+  z: number;
+  origX: number;
+  origY: number;
+  origZ: number;
+  color: string;
+  size: number;
+  vz: number;
+
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+    this.z = Math.random() * 1000;
+    this.origX = x;
+    this.origY = y;
+    this.origZ = this.z;
+    this.color = `hsla(${220 + Math.random() * 40}, 80%, 60%, 0.8)`;
+    this.size = 2;
+    this.vz = Math.random() * 0.5;
+  }
+
+  update() {
+    // Movement and animation logic
+    this.z -= this.vz;
+    if (this.z <= 0) {
+      this.z = 1000;
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    // Drawing logic with glow effects
+  }
+}
 ```
 
 ### Glassmorphic UI
@@ -488,9 +670,48 @@ const GlassCard = ({ children, className, ...props }) => {
 
 Custom UI components enhance user experience:
 - **ModernSpinner**: Animated loading indicator for async operations
+  ```tsx
+  export function ModernSpinner({ size = "medium", className, ...props }: ModernSpinnerProps) {
+    const sizeClasses = {
+      small: "h-4 w-4",
+      medium: "h-8 w-8", 
+      large: "h-12 w-12"
+    };
+    
+    return (
+      <div 
+        className={cn(
+          "relative animate-spin text-primary",
+          sizeClasses[size],
+          className
+        )} 
+        {...props}
+      >
+        {/* Spinner implementation with gradient and glow effects */}
+      </div>
+    );
+  }
+  ```
+
 - **ModernProgress**: Stylized progress bar with animation
+  ```tsx
+  export function ModernProgress({ value, max = 100, className, ...props }: ModernProgressProps) {
+    const percent = value != null ? Math.min(Math.max(value, 0), max) / max : 0;
+    
+    return (
+      <div className={cn("relative h-2 w-full overflow-hidden rounded-full bg-background/50 backdrop-blur", className)}>
+        <div
+          className="h-full w-full flex-1 bg-gradient-to-r from-primary/80 to-primary transition-all duration-300"
+          style={{ transform: `translateX(-${100 - percent * 100}%)` }}
+          {...props}
+        />
+      </div>
+    );
+  }
+  ```
+
 - **FloatingActionButton**: Accessible floating action buttons
-- **ModernFileUpload**: Enhanced file upload interface with drag-and-drop
+- **ModernFileUpload**: Enhanced file upload interface with drag-and-drop with improved accessibility
 
 ### Responsive Design
 
@@ -498,6 +719,7 @@ The UI adapts seamlessly to different screen sizes:
 - Fluid layouts using Flexbox and Grid
 - Mobile-first approach with responsive breakpoints
 - Touch-friendly interaction for mobile devices
+- Dynamic content adjustments for different viewports
 
 ### Theme and Styling
 
@@ -515,14 +737,55 @@ The application uses a carefully crafted color scheme:
   --primary-foreground: 0 0% 98%;
   /* Additional theme variables... */
 }
+
+.dark {
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 6%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 252 100% 67%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 5% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --accent: 191 91% 58%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --muted: 240 5% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --border: 240 5% 14.9%;
+}
 ```
 
 ### Motion and Animation
 
 Subtle animations enhance the user experience:
-- Loading state animations
-- Transition effects between states
+- Loading state animations with pulsating effects
+- Transition effects between states using framer-motion
 - Micro-interactions for better feedback
+- Custom utility classes:
+
+```css
+/* Animation utilities from globals.css */
+.animate-glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in forwards;
+}
+
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 10px -5px rgba(var(--primary), 0.3); }
+  to { box-shadow: 0 0 20px 5px rgba(var(--primary), 0.5); }
+}
+```
 
 ## Advanced Features
 
@@ -533,25 +796,117 @@ The API provides two endpoints for generating professionally formatted PDF resum
 - **POST /api/generate-pdf** - Generates a PDF from a JSON resume
 - **GET /api/resume/{resume_id}/pdf** - Gets a saved resume as a PDF
 
-The PDF generation supports multiple layouts and formatting to create professional-looking documents.
+The PDF generation service uses ReportLab and WeasyPrint to create professional-looking documents:
+
+```python
+class PdfGenerationService:
+    """
+    Service for generating PDF resumes from resume data.
+    Uses ReportLab or WeasyPrint depending on availability.
+    """
+    
+    def __init__(self):
+        """Initialize the PDF generation service."""
+        # Check for PDF libraries
+        self.reportlab_available = PDF_GENERATION_AVAILABLE
+        
+        if not self.reportlab_available:
+            logger.warning("PDF generation libraries not available")
+            
+    def generate_pdf(self, resume_data: Dict[str, Any], template: str = "modern") -> BinaryIO:
+        """
+        Generate a PDF from resume data.
+        
+        Args:
+            resume_data: Resume data to convert to PDF
+            template: Template style to use
+            
+        Returns:
+            PDF file as a binary stream
+        """
+        # Implementation with multiple template styles
+```
 
 ### AI Enhancement with Gemini
 
-The application integrates with Google's Gemini AI when available:
+The application integrates with Google's Gemini AI:
 
 1. Obtain a Gemini API key from https://aistudio.google.com/
-2. Add your API key to the `.env` file
+2. Add your API key to the `.env` file:
+   ```
+   GEMINI_API_KEY=AIzaSyDVJ-hfTgEsIPdKGknlKEjBCi_GqkqpPoE
+   ```
 3. Restart the server
 
-When properly configured, the AI enhancement will use Gemini to provide sophisticated content improvements. If the API key is not available or the library is not installed, the system automatically falls back to mock enhancements.
+The enhanced error handling in the AI service ensures graceful fallbacks if the API key is invalid or the Gemini service is unavailable:
+
+```python
+try:
+    # Configure the Gemini API
+    genai.configure(api_key=self.api_key)
+    self.model = genai.GenerativeModel('gemini-1.5-pro')
+    self.is_available = True
+except Exception as e:
+    logger.error(f"Failed to initialize AI service: {str(e)}")
+    self.is_available = False
+```
+
+## Project Structure
+
+```
+resumeforge/
+│
+├── backend/                  # FastAPI backend
+│   ├── app/
+│   │   ├── main.py          # FastAPI application entry point
+│   │   ├── models/          # Pydantic data models
+│   │   ├── routers/         # API endpoints
+│   │   ├── services/        # Business logic
+│   │   │   ├── ai_service.py        # AI enhancement with Gemini
+│   │   │   ├── pdf_service.py       # PDF generation
+│   │   │   ├── resume_parser_service.py  # Resume parsing
+│   │   │   └── storage_service.py   # JSON storage
+│   │   ├── templates/       # HTML templates for rendering
+│   │   └── utils/           # Utility functions
+│   │       └── env_loader.py  # Environment variable loading
+│   ├── server.py            # Server entry point
+│   └── data/                # Resume data storage
+│
+├── frontend/                # Next.js frontend
+│   ├── app/
+│   │   ├── globals.css      # Global styles
+│   │   ├── layout.tsx       # Root layout
+│   │   └── page.tsx         # Landing page
+│   ├── components/
+│   │   ├── ui/              # UI components
+│   │   │   ├── animated-background.tsx
+│   │   │   ├── glass-card.tsx
+│   │   │   ├── modern-progress.tsx
+│   │   │   ├── modern-spinner.tsx
+│   │   │   ├── modern-file-upload.tsx
+│   │   │   └── floating-action-button.tsx
+│   │   ├── header.tsx       # Site header
+│   │   └── resume-enhancer.tsx  # Resume upload & enhancement
+│   └── src/
+│       ├── ai/             # AI integration
+│       └── lib/            # Utilities & API client
+│
+├── .env                     # Environment variables
+├── requirements.txt         # Python dependencies
+├── start_all.ps1            # Windows launcher script
+└── README.md                # Project documentation
+```
 
 ## Future Enhancements
 
 1. ✅ Integration with Google Gemini AI for real AI-powered enhancements
 2. ✅ PDF export functionality
-3. Implement document parsing for PDF and DOCX files
-4. Add authentication and user accounts
-5. Support for multiple resume templates
+3. ✅ Document parsing for PDF and DOCX files
+4. ✅ Modern UI with vibrant animations and glassmorphism
+5. Add authentication and user accounts
+6. Support for multiple resume templates
+7. AI-powered interview preparation suggestions
+8. Resume analytics and improvement tracking
 
 ## Troubleshooting
 
@@ -573,6 +928,12 @@ When properly configured, the AI enhancement will use Gemini to provide sophisti
    - Verify the backend is running at http://localhost:8000
    - Check browser console for CORS errors
    - Ensure frontend API calls use the correct base URL
+
+4. **500 Server Errors**
+   - Check if the `.env` file exists in the project root with a valid `GEMINI_API_KEY`
+   - Verify that all required Python packages are installed correctly
+   - Check the server logs for detailed error messages
+   - Ensure the `data` directory exists in the `backend` folder and has write permissions
 
 4. **Python Dependency Issues**
    - Use a virtual environment to isolate dependencies
